@@ -1,16 +1,10 @@
-# TARGETS for devs:
+# Convenience TARGETS for bootstrapping a docker-ised dev environment.
+#
 # - docker-dev: (prepare everything and) run the dev container
 # - docker-lint: run the linter
 #
-# Update CHANGELOG.md
-#   $ GITHUB_TOKEN=INSERT_TOKEN_HERE make CHANGELOG.md
-#
-# Helper TARGETS:
 # - docker-setup: prepare the docker-local volume that will store the node_modules
 # - docker-install: (mostly) run `npm install`
-#
-
-CHANGELOG_TOKEN := $(if $(GITHUB_TOKEN),--token $(GITHUB_TOKEN),$(""))
 
 .DEFAULT_GOAL := docker-dev
 
@@ -21,11 +15,6 @@ docker-dev: docker-install
 .PHONY: docker-lint
 docker-lint: docker-quick-install
 	docker-compose run --rm dev npm run lint
-
-.PHONY: CHANGELOG.md
-CHANGELOG.md:
-	echo $(CHANGELOG_TOKEN)
-	docker-compose run --rm changelog --user elexis-eu --project lexonomy $(CHANGELOG_TOKEN)
 
 # prep targets
 #

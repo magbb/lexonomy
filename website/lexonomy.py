@@ -79,7 +79,7 @@ install(profiler)
 # to ensure that user has appropriate access to the dictionary. Empty list checks read access only.
 # assumes <dictID> in route and "dictID", "user", "dictDB", "configs" as parameters in the decorated function
 # <dictID> gets open and passed as dictDB alongside the configs
-def authDict(checkRights, errorRedirect=False):
+def authDict(checkRights):
     def wrap(func):
         @functools.wraps(func)
         def wrapper_verifyLoginAndDictAccess(*args, **kwargs):
@@ -90,10 +90,7 @@ def authDict(checkRights, errorRedirect=False):
             res, configs = ops.verifyLoginAndDictAccess(request.cookies.email, request.cookies.sessionkey, conn)
             for r in checkRights:
                 if not res.get(r, False):
-                    if errorRedirect:
-                        redirect("/"+kwargs["dictID"])
-                    else:
-                        return res
+                    return res
             kwargs["user"] = res
             kwargs["dictDB"] = conn
             kwargs["configs"] = configs
@@ -155,7 +152,6 @@ def entrydelete(dictID, user, dictDB, configs):
 def entryread(dictID, user, dictDB, configs):
     adjustedEntryID, xml, _title = ops.readEntry(dictDB, configs, request.forms.id)
     adjustedEntryID = int(adjustedEntryID)
-    xml = xml.replace(">\n<", "><")
     html = ""
     if xml:
         if configs["xemplate"].get("_xsl"):
@@ -166,7 +162,7 @@ def entryread(dictID, user, dictDB, configs):
         elif configs["xemplate"].get("_css"):
             html = xml
         else:
-            html = "<script type='text/javascript'>$('#viewer').html(Xemplatron.xml2html('" + xml.replace("'","\\'").replace("\n","") + "', " + json.dumps(configs["xemplate"]) + ", " + json.dumps(configs["xema"]) + "));</script>"
+            html = "<script type='text/javascript'>$('#viewer').html(Xemplatron.xml2html('"+re.sub(r"'","\\'", xml)+"', "+json.dumps(configs["xemplate"])+", "+json.dumps(configs["xema"])+"));</script>"
     return {"success": (adjustedEntryID > 0), "id": adjustedEntryID, "content": xml, "contentHtml": html}
 
 @post(siteconfig["rootPath"]+"<dictID>/entryupdate.json")
@@ -659,19 +655,19 @@ def randomone(dictID, user, dictDB, configs):
     return ops.readRandomOne(dictDB, dictID, configs)
 
 @get(siteconfig["rootPath"]+"<dictID>/download")
-@authDict(["canDownload"], True)
+@authDict(["canDownload"])
 def download(dictID, user, dictDB, configs):
     return template("download.tpl", **{"siteconfig": siteconfig, "user": user, "dictID": dictID, "dictTitle": configs["ident"]["title"]})
 
 @get(siteconfig["rootPath"]+"<dictID>/download.xml")
-@authDict(["canDownload"], True)
+@authDict(["canDownload"])
 def downloadxml(dictID, user, dictDB, configs):
     response.content_type = "text/xml; charset=utf-8"
     response.set_header("Content-Disposition", "attachment; filename="+dictID+".xml")
     return ops.download(dictDB, dictID, configs)
 
 @get(siteconfig["rootPath"]+"<dictID>/upload")
-@authDict(["canUpload"], True)
+@authDict(["canUpload"])
 def upload(dictID, user, dictDB, configs):
     return template("upload.tpl", **{"siteconfig": siteconfig, "user": user, "dictID": dictID, "dictTitle": configs["ident"]["title"]})
 
@@ -692,7 +688,7 @@ def uploadhtml(dictID, user, dictDB, configs):
         return "<html><body>../import/?file=" + filepath + "&amp;uploadStart=" + uploadStart + "</body></html>"
 
 @get(siteconfig["rootPath"]+"<dictID>/import")
-@authDict(["canUpload"], True)
+@authDict(["canUpload"])
 def importhtml(dictID, user, dictDB, configs):
     return template("import.tpl", **{"siteconfig": siteconfig, "user": user, "dictID": dictID, "dictTitle": configs["ident"]["title"], "filename": request.query.file, "uploadStart": request.query.uploadStart})
 
@@ -710,12 +706,12 @@ def importjson(dictID, user, dictDB, configs):
         return ops.importfile(dictID, request.query.filename, user["email"])
 
 @get(siteconfig["rootPath"]+"<dictID>/edit")
-@authDict(["canEdit"], True)
+@authDict(["canEdit"])
 def dictedit(dictID, user, dictDB, configs):
     return redirect("/"+dictID+"/edit/"+configs["xema"]["root"])
 
 @get(siteconfig["rootPath"]+"<dictID>/edit/<doctype>")
-@authDict(["canEdit"], True)
+@authDict(["canEdit"])
 def dicteditdoc(dictID, doctype, user, dictDB, configs):
     doctypesUsed = ops.readDoctypesUsed(dictDB)
     doctypes = [configs["xema"]["root"]] + list(configs["subbing"].keys()) + doctypesUsed
@@ -723,7 +719,7 @@ def dicteditdoc(dictID, doctype, user, dictDB, configs):
     return template("edit.tpl", **{"siteconfig": siteconfig, "user": user, "dictID": dictID, "dictTitle": configs["ident"]["title"], "flagging":configs["flagging"], "doctypes": doctypes, "doctype": doctype, "xonomyMode": configs["editing"]["xonomyMode"]})
 
 @get(siteconfig["rootPath"]+"<dictID>/<doctype>/entryeditor")
-@authDict(["canEdit"], True)
+@authDict(["canEdit"])
 def entryeditor(dictID, doctype, user, dictDB, configs):
     if "_xsl" in configs["xemplate"]:
         configs["xemplate"]["_xsl"] = "dummy"
@@ -747,13 +743,13 @@ def entrylist(dictID, doctype, user, dictDB, configs):
         return {"success": True, "entries": entries, "total": total}
 
 @get(siteconfig["rootPath"]+"<dictID>/config")
-@authDict(["canConfig"], True)
+@authDict(["canConfig"])
 def config(dictID, user, dictDB, configs):
     stats = ops.getDictStats(dictDB)
     return template("config.tpl", **{"siteconfig": siteconfig, "user": user, "dictID": dictID, "dictTitle": configs["ident"]["title"], "needResave": stats["needResave"], "hasXemaOverride": ("_xonomyDocSpec" in configs["xema"] or "_dtd" in configs["xema"]), "hasXemplateOverride": ("_xsl" in configs["xemplate"] or "_css" in configs["xemplate"]), "hasEditingOverride": ("_js" in configs["editing"])})
 
 @get(siteconfig["rootPath"]+"<dictID>/config/<page>")
-@authDict(["canConfig"], True)
+@authDict(["canConfig"])
 def configpage(dictID, page, user, dictDB, configs):
     return template("config-"+page+".tpl", **{"siteconfig": siteconfig, "user": user, "dictID": dictID, "dictTitle": configs["ident"]["title"], "xema": configs["xema"], "titling": configs["titling"], "flagging": configs["flagging"]})
 

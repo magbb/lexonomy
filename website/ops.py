@@ -14,7 +14,6 @@ import jwt
 import shutil
 import markdown
 import re
-from collections import defaultdict
 
 siteconfig = json.load(open(os.environ.get("LEXONOMY_SITECONFIG",
                                            "siteconfig.json"), encoding="utf-8"))
@@ -60,14 +59,9 @@ def readDictConfigs(dictDB):
         configs[r["id"]] = json.loads(r["json"])
     for conf in ["ident", "publico", "users", "kex", "titling", "flagging",
                  "searchability", "xampl", "thes", "collx", "defo", "xema",
-                 "xemplate", "editing", "subbing", "download"]:
+                 "xemplate", "editing", "subbing"]:
         if not conf in configs:
             configs[conf] = defaultDictConfig.get(conf, {})
-
-    for key in configs.keys():
-        if type(configs[key]) is dict:
-            configs[key] = defaultdict(lambda: None, configs[key])
-
     return configs
 
 def addSubentryParentTags(db, entryID, xml):
@@ -116,7 +110,7 @@ def verifyLoginAndDictAccess(email, sessionkey, dictDB):
     configs = readDictConfigs(dictDB)
     dictAccess = configs["users"].get(email)
     if not dictAccess and (not "isAdmin" in ret or not ret["isAdmin"]):
-        return {"loggedin": ret["loggedin"], "email": email, "dictAccess": False, "isAdmin": False}, configs
+        return {"loggedin": True, "email": email, "dictAccess": False, "isAdmin": False}, configs
     ret["dictAccess"] = dictAccess
     for r in ["canEdit", "canConfig", "canDownload", "canUpload"]:
         ret[r] = ret.get("isAdmin") or (dictAccess and dictAccess[r])
@@ -665,7 +659,7 @@ def setHousekeepingAttributes(entryID, xml, subbing):
     xml = re.sub(r"^(<[^>\/]*)\s+lxnm:subentryID=['\"][^\"\']*[\"']", r"\1", xml)
     #get name of the top-level element
     root = ""
-    root = re.search(r"^<([^\s>\/]+)", xml, flags=re.M).group(1)
+    root = re.match(r"^<([^\s>\/]+)", xml).group(1)
     #set housekeeping attributes
     if root in subbing:
         xml = re.sub(r"^<([^\s>\/]+)", r"<\1 lxnm:subentryID='"+entryID+"'", xml)
@@ -744,51 +738,15 @@ def readRandomOne(dictDB, dictID, configs):
     else:
         return {"id": 0, "title": "", "xml": ""}
 
-def download_xslt(configs):
-    if 'download' in configs and 'xslt' in configs['download'] and configs['download']['xslt'][0] == "<": # Is this a problem?
-        import lxml.etree as ET
-        try:
-            xslt_dom = ET.XML(configs["download"]["xslt"].encode("utf-8"))
-            xslt = ET.XSLT(xslt_dom)
-        except (ET.XSLTParseError, ET.XMLSyntaxError) as e:
-            return "Failed to parse XSL: {}".format(e), False
-
-        def transform(xml_txt):
-            try:
-                dom = ET.XML(xml_txt)
-                xml_transformed_dom = xslt(dom)
-                xml_transformed_byt = ET.tostring(xml_transformed_dom, xml_declaration=False, encoding="utf-8")
-                xml_transformed = xml_transformed_byt.decode('utf-8')
-                return xml_transformed, True
-            except ET.XMLSyntaxError as e:
-                return "Failed to parse content: {}".format(e), False
-            except ET.XSLTParseError as e:
-                return "Failed to use XSL: {}".format(e), False
-    else:
-        def transform(xml_text):
-            return xml_text, True
-
-    return transform
-
-
 def download(dictDB, dictID, configs):
     rootname = dictID.lstrip(" 0123456789")
     if rootname == "":
         rootname = "lexonomy"
     resxml = "<"+rootname+">"
     c = dictDB.execute("select id, xml from entries")
-
-    transform = download_xslt(configs)
-
     for r in c.fetchall():
-        xml = setHousekeepingAttributes(r["id"], r["xml"], configs["subbing"])
-        xml_xsl, success = transform(xml)
-        if not success:
-            return xml_xsl, 400
-
-        resxml += xml_xsl
+        resxml += setHousekeepingAttributes(r["id"], r["xml"], configs["subbing"])
         resxml += "\n"
-
     resxml += "</"+rootname+">"
     return resxml
 
